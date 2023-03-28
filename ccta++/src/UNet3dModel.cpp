@@ -1,3 +1,4 @@
+#include "../include/CommonUtils.h"
 #include "../include/UNet3dModel.h"
 
 UNet3dModel::UNet3dModel(int in_channel, int out_channel)
@@ -82,4 +83,10 @@ torch::Tensor UNet3dModel::CropAndConcat(torch::Tensor upsampled, torch::Tensor 
     }
 
     return torch::cat({upsampled, bypass}, /*dim=*/1); 
+}
+
+void UNet3dModel::Print() {
+    std::string msg = "Info: \n\tObject created, in_channels:" + std::to_string(_inch) + ", out_channels:" + std::to_string(_outch);
+    msg += "\n\tModels path: " + _models_path;
+    CommonUtils::log("UNet3dModel::Print", msg , true);
 }
