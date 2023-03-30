@@ -85,8 +85,19 @@ torch::Tensor UNet3dModel::CropAndConcat(torch::Tensor upsampled, torch::Tensor 
     return torch::cat({upsampled, bypass}, /*dim=*/1); 
 }
 
-void UNet3dModel::Print() {
+void UNet3dModel::Print(bool verbose) {
     std::string msg = "Info: \n\tObject created, in_channels:" + std::to_string(_inch) + ", out_channels:" + std::to_string(_outch);
     msg += "\n\tModels path: " + _models_path;
-    CommonUtils::log("UNet3dModel::Print", msg , true);
+    CommonUtils::log(msg, "UNet3dModel::Print", true);
 }
+
+void UNet3dModel::LoadXModel(std::string x, bool verbose) {
+    std::string msg = "Info: Loading <" + x + "> model from: " + _models_path;
+    CommonUtils::log(msg, "UNet3dModel::LoadXModel", verbose);
+
+    torch::serialize::InputArchive input_archive;
+    input_archive.load_from(_models_path + x);
+
+    this->load(input_archive);
+}
+

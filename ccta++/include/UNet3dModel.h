@@ -19,10 +19,16 @@ public:
     torch::nn::Sequential FinalBlock(int in_channels, int mid_channel, int out_channels, int kernel_size = 3);
     torch::Tensor CropAndConcat(torch::Tensor upsampled, torch::Tensor bypass, bool crop = false);
 
-    void Print(); 
+    void LoadXModel(std::string x, bool verbose = false);
+
+    void Print(bool verbose = false); 
 
     inline void SetModelsPath(std::string path){_models_path = path;};
-    inline std::string GetModelsPath(){return _models_path;};    
+    inline std::string GetModelsPath(){return _models_path;};
+
+    inline void LoadRoiModel(bool verbose = false) { LoadXModel(ROI, verbose);}; 
+    inline void LoadSegInitModel(bool verbose = false) { LoadXModel(SEG_INIT, verbose);}; 
+    inline void LoadSegFinalModel(bool verbose = false) { LoadXModel(SEG_FINAL, verbose);}; 
 
 private:
     torch::nn::Sequential _encode1, _encode2, _encode3;
@@ -32,6 +38,7 @@ private:
 
     int _inch, _outch;
     std::string _models_path;
+    
 };
 
 #endif /* CCTATORCHMODEL_H */

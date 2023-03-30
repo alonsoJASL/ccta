@@ -2,8 +2,12 @@
 #include <string>
 #include <vector>
 
+#include <torch/torch.h>
+
 #include <itkPermuteAxesImageFilter.h>
 #include <itkPasteImageFilter.h>
+#include <itkLinearInterpolateImageFunction.h>
+#include <itkResampleImageFilter.h>
 
 #include "../include/CommonUtils.h"
 #include "../include/ImageHandler.h"
@@ -14,14 +18,16 @@ ImageHandler::ImageHandler() {
 ImageHandler::ImageHandler(std::string dir, std::string name, bool is_dicom, bool verbose) {
     im = ImageType::New();
     seg = SegmentationType::New();
-    ipp = std::vector<float>(2);
-    ps = std::vector<float>(2);
+    ipp = {-1, -1};
+    ps = {-1, -1};
 
     if (is_dicom) {
         LoadDicom(dir, name, verbose);
+        dicom_name = name;
     }
     else {
         LoadNifti(dir, name, verbose);
+        nifti_name = name;
     }
 }
 
@@ -115,8 +121,7 @@ void ImageHandler::LoadDicom(std::string dir, std::string dcm_folder, bool verbo
             im = pasteFilter->GetOutput();
             CommonUtils::log("Paste filter", "ImageHandler::LoadDicom", verbose);
         }
-
-        std::cout << "... complete." << std::endl; 
+        CommonUtils::log("Reading complete.", "ImageHandler::LoadDicom", verbose);
     }
     catch (const itk::ExceptionObject & ex) {
         std::cout << ex << std::endl;
@@ -176,78 +181,206 @@ void ImageHandler::GenerateGrid(std::vector<double>& x, std::vector<double>& y, 
     msg += "\n\tOrigin: " + std::to_string(origin[0]) + ", " + std::to_string(origin[1]) + ", " + std::to_string(origin[2]);
     CommonUtils::log(msg, "ImageHandler::GenerateGrid", verbose);
 
-    ipp[0] = origin[2];
-    ipp[1] = origin[2] + (im->GetBufferedRegion().GetSize()[2] - 1) * spacing[2];
+    ipp.at(0) = 0;
+    ipp.at(1) = spacing[0];
+    // ipp.at(1) = spacing[0] + (im->GetBufferedRegion().GetSize()[2] - 1) * spacing[2];
 
-    ps[0] = spacing[1];
-    ps[1] = spacing[0];
+    ps.at(0) = spacing[2];
+    ps.at(1) = spacing[1];
 
-    msg = "Info:\nIPP: " + std::to_string(ipp[0]) + ", " + std::to_string(ipp[1]);
-    msg += "\nPS: " + std::to_string(ps[0]) + ", " + std::to_string(ps[1]);
+    msg = "Info:\n\tIPP: " + std::to_string(ipp.at(0)) + ", " + std::to_string(ipp.at(1));
+    msg += "\n\tPS: " + std::to_string(ps.at(0)) + ", " + std::to_string(ps.at(1));
     CommonUtils::log(msg, "ImageHandler::GenerateGrid", verbose);
     
-    double st = std::sqrt(std::pow(ipp[0] - ipp[1], 2.0) +
-                          std::pow(ipp[2] - ipp[1], 2.0));
+    double st = std::sqrt(std::pow(ipp.at(0) - ipp.at(1), 2.0)); 
     unsigned int nx = im->GetLargestPossibleRegion().GetSize()[0];
     unsigned int ny = im->GetLargestPossibleRegion().GetSize()[1];
     unsigned int nz = im->GetLargestPossibleRegion().GetSize()[2];
+    msg = "Info:\n\tNX: " + std::to_string(nx) + ", NY: " + std::to_string(ny) + ", NZ: " + std::to_string(nz);
+    CommonUtils::log(msg, "ImageHandler::GenerateGrid", verbose);
+
     x.resize(nx);
     y.resize(ny);
     z.resize(nz);
 
     for (unsigned int ix = 0; ix < nx; ++ix) {
-        x[ix] = ix * st;
+        x.at(ix) = (double) ix * st;
     }
     for (unsigned int jx = 0; jx < ny; ++jx) {
-        y[jx] = jx * (double) ps[0];
+        y.at(jx) = (double) jx * ps.at(0);
     }
     for (unsigned int kx = 0; kx < nz; ++kx) {
-        z[kx] = kx * (double) ps[1];
+        z.at(kx) = (double) kx * ps.at(1);
     }
 
-    vs3[0] = st;
-    vs3[1] = ps[0];
-    vs3[2] = ps[1];
+    vs3.at(0) = st;
+    vs3.at(1) = ps.at(0);
+    vs3.at(2) = ps.at(1);
 
     msg = "Info:\n\tVS3: " + std::to_string(vs3[0]) + ", " + std::to_string(vs3[1]) + ", " + std::to_string(vs3[2]);
     CommonUtils::log(msg, "ImageHandler::GenerateGrid", verbose);
 }
 
-ImageType::Pointer ImageHandler::GenerateGridData(std::vector<double> x, std::vector<double> y, std::vector<double> z, double vs, bool verbose = false){
-    int x_size = std::ceil((x.back() - vs / 2) / vs);
-    int y_size = std::ceil((y.back() - vs / 2) / vs);
-    int z_size = std::ceil((z.back() - vs / 2) / vs);
+ImageType::Pointer ImageHandler::GenerateGridData(std::vector<double> x, std::vector<double> y, std::vector<double> z, double vs, bool verbose){
+    double half_vs = vs / 2.0;
+    unsigned long x_size = std::ceil((x.back() - half_vs) / vs);
+    unsigned long y_size = std::ceil((y.back() - half_vs) / vs);
+    unsigned long z_size = std::ceil((z.back() - half_vs) / vs);
+
+    std::string msg = "X size: " + std::to_string(x_size) + ", Y size: " + std::to_string(y_size) + ", Z size: " + std::to_string(z_size);
+    CommonUtils::log(msg, "ImageHandler::GenerateGridData", verbose);
 
     std::vector<double> x_grid(x_size), y_grid(y_size), z_grid(z_size);
-    for (int i = 0; i < x_size; ++i){
-        x_grid[i] = (i + 0.5) * vs;
+    for (int i = 0; i < x_size; ++i) {
+        x_grid[i] = (i + 0.5) * vs - half_vs;
     }
-    for (int j = 0; j < y_size; ++j){
-        y_grid[j] = (j + 0.5) * vs;
+    for (int j = 0; j < y_size; ++j) {
+        y_grid[j] = (j + 0.5) * vs - half_vs;
     }
-    for (int k = 0; k < z_size; ++k){
-        z_grid[k] = (k + 0.5) * vs;
+    for (int k = 0; k < z_size; ++k) {
+        z_grid[k] = (k + 0.5) * vs - half_vs;
     }
+    CommonUtils::log("Grid generated", "ImageHandler::GenerateGridData", verbose);
 
-    // Create the image, by interpolating it with im
-    
+    // Create the image, by interpolating it with class member ImageType::Pointer im
+    using InterpolatorType = itk::LinearInterpolateImageFunction<ImageType, double>;
+    InterpolatorType::Pointer interpolator = InterpolatorType::New();
+    // interpolator->SetInputImage(im);
+
+    using ResamplerType = itk::ResampleImageFilter<ImageType, ImageType>;
+    const ImageType::SizeType outputSize{x_size, y_size, z_size};
+    double outputSpacing[3] = {vs, vs, vs};
+
+    ResamplerType::Pointer resampler = ResamplerType::New();
+    resampler->SetInput(im);
+    resampler->SetOutputSpacing(outputSpacing);
+    resampler->SetSize(outputSize);
+    resampler->SetInterpolator(interpolator);
+    resampler->SetOutputOrigin(im->GetOrigin()); 
+    resampler->Update();
+
+    CommonUtils::log("Image resampled", "ImageHandler::GenerateGridData", verbose);
+
+    return resampler->GetOutput();
 }
 
-    /// @brief Save image to file. Call with either ImageType or SegmentationType
-    /// @tparam T can be ImageType or SegmentationType
-    /// @param image Image to save
-    /// @param filename Path to save image to
-    template <typename T>
-    void ImageHandler::SaveNifti(typename itk::Image<T, 3>::Pointer image, std::string filename)
-{
-    using WriterType = itk::ImageFileWriter< itk::Image<T, 3> >;
-    auto writer = WriterType::New();
-    writer->SetFileName(filename);
-    writer->SetInput(image);
-    try {
-        writer->Update();
+torch::Tensor ImageHandler::GenerateRoiImage(ImageType::Pointer im_2mm, int &size_c, bool verbose) {
+    std::vector<int> sz(3);
+    sz[0] = im_2mm->GetLargestPossibleRegion().GetSize()[0];
+    sz[1] = im_2mm->GetLargestPossibleRegion().GetSize()[1];
+    sz[2] = im_2mm->GetLargestPossibleRegion().GetSize()[2];
+
+    double mean_sz = (sz[0] + sz[1] + sz[2]) / 3;
+    double min_sz = std::min_element(sz.begin(), sz.end()) - sz.begin();
+
+    std::cout << "Mean size: " << mean_sz << std::endl;
+    std::cout << "Min size: " << min_sz << std::endl;
+    
+    auto arg_min_sz = std::distance(sz.begin(), std::min_element(sz.begin(), sz.end()));
+
+    std::vector<std::array<double, 3>> c;
+    if (mean_sz < 128) {
+
+        c = {{{sz[0] / 2.0, sz[1] / 2.0, sz[2] / 2.0}}};
+
+    } else if (min_sz < 128) {
+
+        if (arg_min_sz == 0) {
+            c = {{{sz[0] / 2.0, sz[1] / 2.0, sz[2] / 2.0}},
+                 {{sz[0] / 2.0, 64.0, 64.0}},
+                 {{sz[0] / 2.0, 64.0, sz[2] - 64.0}},
+                 {{sz[0] / 2.0, sz[1] - 64.0, 64.0}},
+                 {{sz[0] / 2.0, sz[1] - 64.0, sz[2] - 64.0}}};
+        } else if (arg_min_sz == 1) {
+            c = {{{sz[0] / 2.0, sz[1] / 2.0, sz[2] / 2.0}},
+                 {{64.0, sz[1] / 2.0, 64.0}},
+                 {{64.0, sz[1] / 2.0, sz[2] - 64.0}},
+                 {{sz[0] - 64.0, sz[1] / 2.0, 64.0}},
+                 {{sz[0] - 64.0, sz[1] / 2.0, sz[2] - 64.0}}};
+        } else {
+            c = {{{sz[0] / 2.0, sz[1] / 2.0, sz[2] / 2.0}},
+                 {{64.0, 64.0, sz[2] / 2.0}},
+                 {{64.0, sz[1] / 2.0, sz[2] - 64.0}},
+                 {{sz[0] - 64.0, 64.0, sz[2] / 2.0}},
+                 {{sz[0] - 64.0, sz[1] / 2.0, sz[2] - 64.0}}};
+        }
+    } else {
+        c = {{{sz[0] / 2.0, sz[1] / 2.0, sz[2] / 2.0}},
+             {{64.0, 64.0, 64.0}},
+             {{64.0, 64.0, sz[2] - 64.0}},
+             {{64.0, sz[1] - 64.0, 64.0}},
+             {{64.0, sz[1] - 64.0, sz[2] - 64.0}},
+             {{sz[0] - 64.0, 64.0, 64.0}},
+             {{sz[0] - 64.0, 64.0, sz[2] - 64.0}}, 
+             {{sz[0] - 64.0, sz[1] - 64.0, 64.0}},
+             {{sz[0] - 64.0, sz[1] - 64.0, sz[2] - 64.0}}};
     }
-    catch (const itk::ExceptionObject & ex) {
-        std::cout << ex << std::endl;
+
+    const int b = 256; // background images size 2b * 2b, i.e. around 0.5 * 0.5 * 0.5 m^3
+
+    // create background image
+    ImageType::Pointer img_b = ImageType::New();
+    ImageType::SizeType size;
+    size[0] = 2 * b;
+    size[1] = 2 * b;
+    size[2] = 2 * b;
+    ImageType::RegionType region;
+    region.SetSize(size);
+    img_b->SetRegions(region);
+    img_b->Allocate();
+    img_b->FillBuffer(-1024);
+
+    // copy 2mm image into background image
+    typedef itk::ImageRegionIterator<ImageType> IteratorType;
+    ImageType::RegionType inputRegion = im_2mm->GetLargestPossibleRegion();
+    inputRegion.SetIndex(0, b - sz[0] / 2);
+    inputRegion.SetIndex(1, b - sz[1] / 2);
+    inputRegion.SetIndex(2, b - sz[2] / 2);
+    
+    IteratorType outputIt(img_b, img_b->GetLargestPossibleRegion());
+    outputIt.SetRegion(inputRegion);
+    IteratorType inputIt(im_2mm, inputRegion);
+    outputIt.GoToBegin();
+    inputIt.GoToBegin();
+    while (!outputIt.IsAtEnd()) {
+        outputIt.Set(inputIt.Get());
+        ++outputIt;
+        ++inputIt;
     }
+
+    size_c = static_cast<int> (c.size());
+    torch::Tensor img_tst = torch::zeros({size_c, 1, 128, 128, 128}, torch::kFloat);
+    for (int k = 0; k < size_c; k++) {
+        const int x_min = b - static_cast<int>(sz[0] / 2.0) + static_cast<int>(c[k][0]) - 64;
+        const int x_max = x_min + 128;
+        const int y_min = b - static_cast<int>(sz[1] / 2.0) + static_cast<int>(c[k][1]) - 64;
+        const int y_max = y_min + 128;
+        const int z_min = b - static_cast<int>(sz[2] / 2.0) + static_cast<int>(c[k][2]) - 64;
+        const int z_max = z_min + 128;
+        img_tst[k][0] = torch::from_blob(img_b->GetPixelContainer()->GetBufferPointer() + x_min + y_min * 512 + z_min * 512 * 512, {128, 128, 128}, torch::kFloat32).clone();
+    }
+
+    return img_tst;
+}
+
+torch::Tensor ImageHandler::itkImageToTensor(ImageType::Pointer img, bool verbose) {
+    // Get img size
+    const auto size = img->GetLargestPossibleRegion().GetSize();
+
+    // Create a new tensor with the same size as the img
+    torch::Tensor tensor = torch::zeros({1, 1, static_cast<int>(size[2]), static_cast<int>(size[1]), static_cast<int> (size[0])});
+
+    // Copy the img data to the tensor
+    float *tensor_data = tensor.data_ptr<float>();
+    itk::ImageRegionConstIteratorWithIndex<itk::Image<float, 3>> iterator(img, img->GetLargestPossibleRegion());
+    while (!iterator.IsAtEnd()) {
+        const auto index = iterator.GetIndex();
+        const auto value = iterator.Get();
+        const auto tensor_index = index[2] + index[1] * size[2] + index[0] * size[2] * size[1];
+        tensor_data[tensor_index] = value;
+        ++iterator;
+    }
+
+    // Return the tensor
+    return tensor;
 }
