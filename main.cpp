@@ -5,19 +5,13 @@
 
 #include <torch/torch.h>
 
-#include "ImageHandler.h"
-#include "UNet3dModel.h"
-#include "CommonUtils.h"
+#include "ccta++/include/ImageHandler.h"
+#include "ccta++/include/UNet3dModel.h"
+#include "ccta++/include/CommonUtils.h"
 
 void Usage(std::string name);
 
 int main(int argc, char const *argv[]) {    
-
-    CommonUtils::log("Starting CCTA++: number of arguments: " + std::to_string(argc), "CCTA", true); 
-    for (int ix = 0; ix < argc; ix++) {
-        CommonUtils::log("Argument " + std::to_string(ix) + ": " + argv[ix], "CCTA", true);
-    }
-    
 
     if (argc < 4) {
         CommonUtils::log("Not enough arguments\n", "CCTA", true); 
@@ -117,6 +111,7 @@ int main(int argc, char const *argv[]) {
     int in_channels = 1,
         out_channels = 11;
     std::unique_ptr<UNet3dModel> unet = std::make_unique<UNet3dModel>(in_channels, out_channels);
+    unet->SetModelsPath(models_path);
     unet->Print(verbose);
 
     unet->LoadSegInitModel();

@@ -96,6 +96,8 @@ void UNet3dModel::LoadXModel(std::string x, bool verbose) {
     CommonUtils::log(msg, "UNet3dModel::LoadXModel", verbose);
 
     torch::serialize::InputArchive input_archive;
+    // check models path and add slash if needed
+    if (_models_path.back() != '/') _models_path += "/";
     input_archive.load_from(_models_path + x);
 
     this->load(input_archive);

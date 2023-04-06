@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Set the path to the PyTorch C++ libraries
 # Alternatively set the -DCMAKE_PREFIX_PATH=/absolute/path/to/libtorch/share/cmake
-# set(Torch_DIR "/Users/josqealonsosolis-lemus/opt/anaconda3/envs/ccta_env/lib/python3.9/site-packages/torch/share/cmake")
+set(Torch_DIR "$HOME/dev/libraries/libtorch-arm64/share/cmake/Torch")
 
 # Find the PyTorch C++ libraries
 find_package(Torch REQUIRED)
@@ -22,7 +22,7 @@ include(${ITK_USE_FILE})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ITK_CXX_FLAGS}")
 
 # Add the subdirectories
-set(CCTA_INCLUDES "./ccta++/include")
+set(CCTA_INCLUDES "./ccta++C/include")
 
 add_subdirectory(ccta++/src)
 include_directories(${CCTA_INCLUDES})

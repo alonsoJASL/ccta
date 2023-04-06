@@ -270,14 +270,22 @@ torch::Tensor ImageHandler::GenerateRoiImage(ImageType::Pointer im_2mm, int &siz
     sz[1] = im_2mm->GetLargestPossibleRegion().GetSize()[1];
     sz[2] = im_2mm->GetLargestPossibleRegion().GetSize()[2];
 
-    double mean_sz = (sz[0] + sz[1] + sz[2]) / 3;
-    double min_sz = std::min_element(sz.begin(), sz.end()) - sz.begin();
+    CommonUtils::log("Image size: " + std::to_string(sz[0]) + ", " + std::to_string(sz[1]) + ", " + std::to_string(sz[2]), "ImageHandler::GenerateRoiImage", verbose);
 
-    std::cout << "Mean size: " << mean_sz << std::endl;
-    std::cout << "Min size: " << min_sz << std::endl;
+    double mean_sz = (sz[0] + sz[1] + sz[2]) / 3.0;
+    double min_sz  = sz[0]; 
+    int arg_min_sz = 0;
+
+    for (int ix = 0; ix < sz.size(); ix++) {
+        if (sz[ix] < min_sz) {
+            min_sz = sz[ix];
+            arg_min_sz = ix;
+        }
+    }
+
+    CommonUtils::log("Mean size: " + std::to_string(mean_sz), "ImageHandler::GenerateRoiImage", verbose);
+    CommonUtils::log("Min size: " + std::to_string(min_sz), "ImageHandler::GenerateRoiImage", verbose);
     
-    auto arg_min_sz = std::distance(sz.begin(), std::min_element(sz.begin(), sz.end()));
-
     std::vector<std::array<double, 3>> c;
     if (mean_sz < 128) {
 
@@ -330,6 +338,11 @@ torch::Tensor ImageHandler::GenerateRoiImage(ImageType::Pointer im_2mm, int &siz
     img_b->Allocate();
     img_b->FillBuffer(-1024);
 
+    CommonUtils::log("Background image size: " + 
+        std::to_string(img_b->GetLargestPossibleRegion().GetSize()[0]) + ", " + 
+        std::to_string(img_b->GetLargestPossibleRegion().GetSize()[1]) + ", " + 
+        std::to_string(img_b->GetLargestPossibleRegion().GetSize()[2]), "ImageHandler::GenerateRoiImage", verbose);
+
     // copy 2mm image into background image
     typedef itk::ImageRegionIterator<ImageType> IteratorType;
     ImageType::RegionType inputRegion = im_2mm->GetLargestPossibleRegion();
@@ -339,7 +352,7 @@ torch::Tensor ImageHandler::GenerateRoiImage(ImageType::Pointer im_2mm, int &siz
     
     IteratorType outputIt(img_b, img_b->GetLargestPossibleRegion());
     outputIt.SetRegion(inputRegion);
-    IteratorType inputIt(im_2mm, inputRegion);
+    IteratorType inputIt(im_2mm, im_2mm->GetLargestPossibleRegion());
     outputIt.GoToBegin();
     inputIt.GoToBegin();
     while (!outputIt.IsAtEnd()) {

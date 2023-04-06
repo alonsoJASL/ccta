@@ -21,9 +21,9 @@ public:
 
     void LoadXModel(std::string x, bool verbose = false);
 
-    void Print(bool verbose = false); 
+    void Print(bool verbose = false);
 
-    inline void SetModelsPath(std::string path){_models_path = path;};
+    inline void SetModelsPath(std::string path) { _models_path = (path.back() != '/') ? path + "/" : path ; };
     inline std::string GetModelsPath(){return _models_path;};
 
     inline void LoadRoiModel(bool verbose = false) { LoadXModel(ROI, verbose);}; 
